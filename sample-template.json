@@ -1,0 +1,55 @@
+{
+  "KEYWORD_BLOCK_TEMPLATES": {
+    "example.com": [
+      {
+        "TEMPLATE_NAME": "Mobile Banner",
+        "TEMPLATE_KEY": "mobile_banner_300x250",
+        "WIDTH": 300,
+        "HEIGHT": 250,
+        "DEVICE": "Mobile"
+      },
+      {
+        "TEMPLATE_NAME": "Desktop Leaderboard",
+        "TEMPLATE_KEY": "desktop_leaderboard_728x90",
+        "WIDTH": 728,
+        "HEIGHT": 90,
+        "DEVICE": "Desktop"
+      }
+    ],
+    "test-site.com": [
+      {
+        "TEMPLATE_NAME": "Square Ad",
+        "TEMPLATE_KEY": "square_250x250",
+        "WIDTH": 250,
+        "HEIGHT": 250,
+        "DEVICE": "Desktop"
+      }
+    ]
+  },
+  "SERP_BLOCK_TEMPLATES": {
+    "example.com": [
+      {
+        "TEMPLATE_NAME": "Search Result Mobile",
+        "TEMPLATE_KEY": "serp_mobile_template",
+        "DEVICE": "Mobile",
+        "KEYWORD": ".search-keyword",
+        "TITLE": ".result-title",
+        "DESCRIPTION": ".result-description",
+        "URL": ".result-url",
+        "ADLINK": ".ad-link"
+      }
+    ],
+    "test-site.com": [
+      {
+        "TEMPLATE_NAME": "Desktop SERP",
+        "TEMPLATE_KEY": "serp_desktop_template", 
+        "DEVICE": "Desktop",
+        "KEYWORD": ".keyword-element",
+        "TITLE": ".title-element",
+        "DESCRIPTION": ".desc-element",
+        "URL": ".url-element",
+        "ADLINK": ".adlink-element"
+      }
+    ]
+  }
+} 
