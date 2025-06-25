@@ -434,16 +434,82 @@ const TemplateEditor = () => {
           lineNumber: i + 1
         });
       } else {
+        // Instead of marking the whole line as modified, find the specific changes
         diffLines.push({
           type: 'modified',
           originalLine,
           currentLine,
-          lineNumber: i + 1
+          lineNumber: i + 1,
+          changes: findStringDifferences(originalLine, currentLine)
         });
       }
     }
     
     return diffLines;
+  };
+
+  // Helper function to find character-level differences between two strings
+  const findStringDifferences = (str1, str2) => {
+    // If strings are completely different or too complex, don't try to find specific changes
+    if (str1.length === 0 || str2.length === 0 || 
+        Math.abs(str1.length - str2.length) > str1.length * 0.5) {
+      return null;
+    }
+    
+    // Special handling for JSON structure lines
+    const jsonStructureRegex = /^(\s*)(".*":\s*)?([{\[\]}]|[{\[\]}],)$/;
+    const str1Match = str1.match(jsonStructureRegex);
+    const str2Match = str2.match(jsonStructureRegex);
+    
+    // If both are JSON structure lines but different, highlight the whole line
+    if (str1Match && str2Match && str1 !== str2) {
+      return {
+        prefixLength: 0,
+        suffixLength: 0,
+        originalMiddle: str1,
+        currentMiddle: str2
+      };
+    }
+    
+    // Handle JSON property lines - highlight only the values if keys are the same
+    const jsonPropertyRegex = /^(\s*)(".*"):\s*(.*)$/;
+    const prop1Match = str1.match(jsonPropertyRegex);
+    const prop2Match = str2.match(jsonPropertyRegex);
+    
+    if (prop1Match && prop2Match && prop1Match[2] === prop2Match[2]) {
+      // Same property key, but different values
+      const keyPart = prop1Match[1] + prop1Match[2] + ": ";
+      return {
+        prefixLength: keyPart.length,
+        suffixLength: 0,
+        originalMiddle: prop1Match[3],
+        currentMiddle: prop2Match[3]
+      };
+    }
+    
+    // Find the longest common prefix
+    let i = 0;
+    while (i < str1.length && i < str2.length && str1[i] === str2[i]) {
+      i++;
+    }
+    const commonPrefixLength = i;
+    
+    // Find the longest common suffix
+    let j = 0;
+    while (
+      j < str1.length - commonPrefixLength && 
+      j < str2.length - commonPrefixLength && 
+      str1[str1.length - 1 - j] === str2[str2.length - 1 - j]
+    ) {
+      j++;
+    }
+    
+    return {
+      prefixLength: commonPrefixLength,
+      suffixLength: j,
+      originalMiddle: str1.substring(commonPrefixLength, str1.length - j),
+      currentMiddle: str2.substring(commonPrefixLength, str2.length - j)
+    };
   };
 
   const renderDiffLine = (diff, index) => {
@@ -456,6 +522,34 @@ const TemplateEditor = () => {
       }
     };
 
+    // Render modified lines with highlighted changes
+    const renderModifiedContent = (line, isOriginal) => {
+      if (diff.type !== 'modified' || !diff.changes) {
+        return <pre className="diff-content">{line || ' '}</pre>;
+      }
+      
+      const { prefixLength, suffixLength, originalMiddle, currentMiddle } = diff.changes;
+      const middle = isOriginal ? originalMiddle : currentMiddle;
+      
+      if (prefixLength === 0 && suffixLength === 0) {
+        // If no common parts found, just show the whole line
+        return <pre className="diff-content">{line || ' '}</pre>;
+      }
+      
+      const prefix = line.substring(0, prefixLength);
+      const suffix = line.substring(line.length - suffixLength);
+      
+      return (
+        <pre className="diff-content">
+          {prefix}
+          <span className={isOriginal ? "diff-deleted-text" : "diff-added-text"}>
+            {middle}
+          </span>
+          {suffix}
+        </pre>
+      );
+    };
+
     return (
       <div 
         key={index} 
@@ -464,11 +558,17 @@ const TemplateEditor = () => {
       >
         <div className="diff-line-number">{diff.lineNumber}</div>
         <div className="diff-original">
-          <pre className="diff-content">{diff.originalLine || ' '}</pre>
+          {diff.type === 'modified' ? 
+            renderModifiedContent(diff.originalLine, true) : 
+            <pre className="diff-content">{diff.originalLine || ' '}</pre>
+          }
         </div>
         <div className="diff-line-number">{diff.lineNumber}</div>
         <div className="diff-modified">
-          <pre className="diff-content">{diff.currentLine || ' '}</pre>
+          {diff.type === 'modified' ? 
+            renderModifiedContent(diff.currentLine, false) : 
+            <pre className="diff-content">{diff.currentLine || ' '}</pre>
+          }
         </div>
       </div>
     );
