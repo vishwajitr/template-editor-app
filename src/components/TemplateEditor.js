@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Form, Button, Tabs, Tab, Container, Row, Col, Alert, Card } from 'react-bootstrap';
+import { Table, Form, Button, Tabs, Tab, Row, Col, Alert, Card } from 'react-bootstrap';
 import './TemplateEditor.css';
 
 const TemplateEditor = () => {
@@ -398,86 +398,139 @@ const TemplateEditor = () => {
     
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [templates, originalTemplates]);
+  }, [templates, originalTemplates, currentChangeIndex, hasChanges, jumpToNextChange, jumpToPreviousChange]);
 
-  // Simple diff algorithm for line-by-line comparison
+  // Proper diff algorithm with insertions, deletions, and modifications
   const generateDiffView = () => {
     const originalLines = originalJson.split('\n');
     const currentLines = generateCurrentJson().split('\n');
-    const maxLines = Math.max(originalLines.length, currentLines.length);
     
+    // Use Myers diff algorithm for proper line matching
+    const diffResult = computeProperDiff(originalLines, currentLines);
+    return diffResult;
+  };
+
+  // Myers diff algorithm implementation for proper line matching
+  const computeProperDiff = (originalLines, currentLines) => {
+    const n = originalLines.length;
+    const m = currentLines.length;
+    
+    // If one array is empty, all lines are added/deleted
+    if (n === 0) {
+      return currentLines.map((line, index) => ({
+        type: 'added',
+        originalLine: '',
+        currentLine: line,
+        lineNumber: index + 1
+      }));
+    }
+    
+    if (m === 0) {
+      return originalLines.map((line, index) => ({
+        type: 'deleted',
+        originalLine: line,
+        currentLine: '',
+        lineNumber: index + 1
+      }));
+    }
+
+    // Find the longest common subsequence
+    const lcs = findLongestCommonSubsequence(originalLines, currentLines);
+    
+    // Build the diff from the LCS
     const diffLines = [];
-    
-    for (let i = 0; i < maxLines; i++) {
-      const originalLine = originalLines[i] || '';
-      const currentLine = currentLines[i] || '';
-      
-      if (originalLine === currentLine) {
+    let origIndex = 0;
+    let currIndex = 0;
+    let lcsIndex = 0;
+    let lineNumber = 1;
+
+    while (origIndex < n || currIndex < m) {
+      if (origIndex < n && currIndex < m && 
+          lcsIndex < lcs.length && 
+          originalLines[origIndex] === lcs[lcsIndex] && 
+          currentLines[currIndex] === lcs[lcsIndex]) {
+        // Lines match - unchanged
         diffLines.push({
           type: 'unchanged',
-          originalLine,
-          currentLine,
-          lineNumber: i + 1
+          originalLine: originalLines[origIndex],
+          currentLine: currentLines[currIndex],
+          lineNumber: lineNumber++
         });
-      } else if (originalLine && !currentLine) {
+        origIndex++;
+        currIndex++;
+        lcsIndex++;
+      } else if (origIndex < n && 
+                 (lcsIndex >= lcs.length || originalLines[origIndex] !== lcs[lcsIndex])) {
+        // Line deleted from original
         diffLines.push({
           type: 'deleted',
-          originalLine,
+          originalLine: originalLines[origIndex],
           currentLine: '',
-          lineNumber: i + 1
+          lineNumber: lineNumber++
         });
-      } else if (!originalLine && currentLine) {
+        origIndex++;
+      } else if (currIndex < m && 
+                 (lcsIndex >= lcs.length || currentLines[currIndex] !== lcs[lcsIndex])) {
+        // Line added to current
         diffLines.push({
           type: 'added',
           originalLine: '',
-          currentLine,
-          lineNumber: i + 1
+          currentLine: currentLines[currIndex],
+          lineNumber: lineNumber++
         });
-      } else {
-        // Instead of marking the whole line as modified, find the specific changes
-        diffLines.push({
-          type: 'modified',
-          originalLine,
-          currentLine,
-          lineNumber: i + 1,
-          changes: findStringDifferences(originalLine, currentLine)
-        });
+        currIndex++;
       }
     }
-    
+
     return diffLines;
   };
 
-  // Helper function to find character-level differences between two strings
-  const findStringDifferences = (str1, str2) => {
-    // If strings are completely different or too complex, don't try to find specific changes
-    if (str1.length === 0 || str2.length === 0 || 
-        Math.abs(str1.length - str2.length) > str1.length * 0.5) {
-      return null;
+  // Find longest common subsequence using dynamic programming
+  const findLongestCommonSubsequence = (arr1, arr2) => {
+    const n = arr1.length;
+    const m = arr2.length;
+    const dp = Array(n + 1).fill().map(() => Array(m + 1).fill(0));
+    
+    // Build the DP table
+    for (let i = 1; i <= n; i++) {
+      for (let j = 1; j <= m; j++) {
+        if (arr1[i - 1] === arr2[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
     }
     
-    // Special handling for JSON structure lines
-    const jsonStructureRegex = /^(\s*)(".*":\s*)?([{\[\]}]|[{\[\]}],)$/;
-    const str1Match = str1.match(jsonStructureRegex);
-    const str2Match = str2.match(jsonStructureRegex);
-    
-    // If both are JSON structure lines but different, highlight the whole line
-    if (str1Match && str2Match && str1 !== str2) {
-      return {
-        prefixLength: 0,
-        suffixLength: 0,
-        originalMiddle: str1,
-        currentMiddle: str2
-      };
+    // Backtrack to find the LCS
+    const lcs = [];
+    let i = n, j = m;
+    while (i > 0 && j > 0) {
+      if (arr1[i - 1] === arr2[j - 1]) {
+        lcs.unshift(arr1[i - 1]);
+        i--;
+        j--;
+      } else if (dp[i - 1][j] > dp[i][j - 1]) {
+        i--;
+      } else {
+        j--;
+      }
     }
     
-    // Handle JSON property lines - highlight only the values if keys are the same
+    return lcs;
+  };
+
+  // Enhanced character-level diff with proper highlighting
+  const findCharacterLevelDiff = (str1, str2) => {
+    if (str1 === str2) return null;
+    
+    // Special handling for JSON property lines
     const jsonPropertyRegex = /^(\s*)(".*"):\s*(.*)$/;
     const prop1Match = str1.match(jsonPropertyRegex);
     const prop2Match = str2.match(jsonPropertyRegex);
     
     if (prop1Match && prop2Match && prop1Match[2] === prop2Match[2]) {
-      // Same property key, but different values
+      // Same property key, but different values - highlight only the value
       const keyPart = prop1Match[1] + prop1Match[2] + ": ";
       return {
         prefixLength: keyPart.length,
@@ -487,28 +540,45 @@ const TemplateEditor = () => {
       };
     }
     
-    // Find the longest common prefix
-    let i = 0;
-    while (i < str1.length && i < str2.length && str1[i] === str2[i]) {
-      i++;
-    }
-    const commonPrefixLength = i;
+    // Use Myers diff algorithm for character-level differences
+    const chars1 = str1.split('');
+    const chars2 = str2.split('');
+    const lcs = findLongestCommonSubsequence(chars1, chars2);
     
-    // Find the longest common suffix
-    let j = 0;
-    while (
-      j < str1.length - commonPrefixLength && 
-      j < str2.length - commonPrefixLength && 
-      str1[str1.length - 1 - j] === str2[str2.length - 1 - j]
-    ) {
+    let i = 0, j = 0, lcsIndex = 0;
+    let prefixLength = 0;
+    let suffixLength = 0;
+    
+    // Find common prefix
+    while (i < chars1.length && j < chars2.length && 
+           lcsIndex < lcs.length && 
+           chars1[i] === lcs[lcsIndex] && chars2[j] === lcs[lcsIndex]) {
+      prefixLength++;
+      i++;
       j++;
+      lcsIndex++;
+    }
+    
+    // Find common suffix
+    let suffixStart1 = chars1.length;
+    let suffixStart2 = chars2.length;
+    let suffixLcsIndex = lcs.length;
+    
+    while (suffixStart1 > prefixLength && suffixStart2 > prefixLength && 
+           suffixLcsIndex > lcsIndex && 
+           chars1[suffixStart1 - 1] === lcs[suffixLcsIndex - 1] && 
+           chars2[suffixStart2 - 1] === lcs[suffixLcsIndex - 1]) {
+      suffixLength++;
+      suffixStart1--;
+      suffixStart2--;
+      suffixLcsIndex--;
     }
     
     return {
-      prefixLength: commonPrefixLength,
-      suffixLength: j,
-      originalMiddle: str1.substring(commonPrefixLength, str1.length - j),
-      currentMiddle: str2.substring(commonPrefixLength, str2.length - j)
+      prefixLength,
+      suffixLength,
+      originalMiddle: str1.substring(prefixLength, suffixStart1),
+      currentMiddle: str2.substring(prefixLength, suffixStart2)
     };
   };
 
@@ -522,7 +592,7 @@ const TemplateEditor = () => {
       }
     };
 
-    // Render modified lines with highlighted changes
+    // Render modified lines with character-level highlighting
     const renderModifiedContent = (line, isOriginal) => {
       if (diff.type !== 'modified' || !diff.changes) {
         return <pre className="diff-content">{line || ' '}</pre>;
@@ -532,7 +602,7 @@ const TemplateEditor = () => {
       const middle = isOriginal ? originalMiddle : currentMiddle;
       
       if (prefixLength === 0 && suffixLength === 0) {
-        // If no common parts found, just show the whole line
+        // If no common parts found, show the whole line
         return <pre className="diff-content">{line || ' '}</pre>;
       }
       
