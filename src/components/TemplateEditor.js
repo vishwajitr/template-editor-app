@@ -320,57 +320,98 @@ const TemplateEditor = () => {
     return JSON.stringify(templates) !== JSON.stringify(originalTemplates);
   };
 
-  // Navigation functions for jumping between changes
-  const getChangedLines = () => {
+  // Navigation functions for jumping between change sets
+  const getChangeSets = () => {
     const diffData = generateDiffView();
-    return diffData.filter(diff => diff.type !== 'unchanged').map(diff => diff.lineNumber);
+    const changeSets = [];
+    let currentSet = [];
+    let inChangeSet = false;
+    
+    diffData.forEach((diff, index) => {
+      if (diff.type !== 'unchanged') {
+        // Start or continue a change set
+        if (!inChangeSet) {
+          inChangeSet = true;
+          currentSet = [];
+        }
+        currentSet.push({
+          ...diff,
+          globalIndex: index
+        });
+      } else {
+        // End current change set if we were in one
+        if (inChangeSet && currentSet.length > 0) {
+          changeSets.push([...currentSet]);
+          currentSet = [];
+          inChangeSet = false;
+        }
+      }
+    });
+    
+    // Don't forget the last change set if it exists
+    if (inChangeSet && currentSet.length > 0) {
+      changeSets.push(currentSet);
+    }
+    
+    return changeSets;
   };
 
-  const jumpToNextChange = () => {
-    const changedLines = getChangedLines();
-    if (changedLines.length === 0) return;
+  const jumpToNextChangeSet = () => {
+    const changeSets = getChangeSets();
+    if (changeSets.length === 0) return;
     
-    const nextIndex = (currentChangeIndex + 1) % changedLines.length;
+    const nextIndex = (currentChangeIndex + 1) % changeSets.length;
     setCurrentChangeIndex(nextIndex);
-    jumpToLine(changedLines[nextIndex]);
+    jumpToChangeSet(changeSets[nextIndex]);
   };
 
-  const jumpToPreviousChange = () => {
-    const changedLines = getChangedLines();
-    if (changedLines.length === 0) return;
+  const jumpToPreviousChangeSet = () => {
+    const changeSets = getChangeSets();
+    if (changeSets.length === 0) return;
     
-    const prevIndex = currentChangeIndex === 0 ? changedLines.length - 1 : currentChangeIndex - 1;
+    const prevIndex = currentChangeIndex === 0 ? changeSets.length - 1 : currentChangeIndex - 1;
     setCurrentChangeIndex(prevIndex);
-    jumpToLine(changedLines[prevIndex]);
+    jumpToChangeSet(changeSets[prevIndex]);
   };
 
-  const jumpToLine = (lineNumber) => {
+  const jumpToChangeSet = (changeSet) => {
     const diffContainer = document.querySelector('.diff-content-container');
-    const targetRow = document.querySelector(`[data-line-number="${lineNumber}"]`);
+    if (!diffContainer || !changeSet || changeSet.length === 0) return;
     
-    if (diffContainer && targetRow) {
-      // Remove previous highlights
-      const previousHighlights = diffContainer.querySelectorAll('.current-change-highlight');
-      previousHighlights.forEach(el => el.classList.remove('current-change-highlight'));
-      
-      // Add highlight to current row
-      targetRow.classList.add('current-change-highlight');
-      
-      // Calculate scroll position
+    // Remove previous highlights
+    const previousHighlights = diffContainer.querySelectorAll('.current-change-highlight');
+    previousHighlights.forEach(el => el.classList.remove('current-change-highlight'));
+    
+    // Highlight all rows in the change set
+    changeSet.forEach(change => {
+      const targetRow = document.querySelector(`[data-line-number="${change.lineNumber}"]`);
+      if (targetRow) {
+        targetRow.classList.add('current-change-highlight');
+      }
+    });
+    
+    // Scroll to the first row of the change set
+    const firstRow = document.querySelector(`[data-line-number="${changeSet[0].lineNumber}"]`);
+    if (firstRow) {
       const containerRect = diffContainer.getBoundingClientRect();
-      const targetRect = targetRow.getBoundingClientRect();
+      const targetRect = firstRow.getBoundingClientRect();
       const scrollTop = targetRect.top - containerRect.top + diffContainer.scrollTop - 100;
       
       diffContainer.scrollTo({
         top: scrollTop,
         behavior: 'smooth'
       });
-      
-      // Remove highlight after 2 seconds
-      setTimeout(() => {
-        targetRow.classList.remove('current-change-highlight');
-      }, 2000);
     }
+    
+    // Remove highlights after 3 seconds
+    setTimeout(() => {
+      changeSet.forEach(change => {
+        const targetRow = document.querySelector(`[data-line-number="${change.lineNumber}"]`);
+        if (targetRow) {
+          targetRow.classList.remove('current-change-highlight');
+        }
+      });
+    }, 3000);
   };
 
   // Keyboard shortcuts for navigation
@@ -388,17 +429,17 @@ const TemplateEditor = () => {
       if ((event.ctrlKey || event.metaKey)) {
         if (event.key === 'ArrowDown') {
           event.preventDefault();
-          jumpToNextChange();
+          jumpToNextChangeSet();
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
-          jumpToPreviousChange();
+          jumpToPreviousChangeSet();
         }
       }
     };
     
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [templates, originalTemplates, currentChangeIndex, hasChanges, jumpToNextChange, jumpToPreviousChange]);
+  }, [templates, originalTemplates, currentChangeIndex, hasChanges, jumpToNextChangeSet, jumpToPreviousChangeSet]);
 
   // Proper diff algorithm with insertions, deletions, and modifications
   const generateDiffView = () => {
@@ -848,20 +889,20 @@ const TemplateEditor = () => {
                       <Button 
                         variant="outline-primary" 
                         size="sm"
-                        onClick={jumpToPreviousChange}
-                        title="Previous Change (Ctrl/Cmd + ↑)"
-                        disabled={getChangedLines().length === 0}
+                        onClick={jumpToPreviousChangeSet}
+                        title="Previous Change Set (Ctrl/Cmd + ↑)"
+                        disabled={getChangeSets().length === 0}
                       >
-                        ⬆️ Prev {getChangedLines().length > 0 && `(${currentChangeIndex + 1}/${getChangedLines().length})`}
+                        ⬆️ Prev Set {getChangeSets().length > 0 && `(${currentChangeIndex + 1}/${getChangeSets().length})`}
                       </Button>
                       <Button 
                         variant="outline-primary" 
                         size="sm"
-                        onClick={jumpToNextChange}
-                        title="Next Change (Ctrl/Cmd + ↓)"
-                        disabled={getChangedLines().length === 0}
+                        onClick={jumpToNextChangeSet}
+                        title="Next Change Set (Ctrl/Cmd + ↓)"
+                        disabled={getChangeSets().length === 0}
                       >
-                        ⬇️ Next {getChangedLines().length > 0 && `(${currentChangeIndex + 1}/${getChangedLines().length})`}
+                        ⬇️ Next Set {getChangeSets().length > 0 && `(${currentChangeIndex + 1}/${getChangeSets().length})`}
                       </Button>
                     </div>
                     
