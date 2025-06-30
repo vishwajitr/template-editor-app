@@ -13,6 +13,8 @@ const TemplateEditor = () => {
   const [originalTemplates, setOriginalTemplates] = useState({});
   const [isApproved, setIsApproved] = useState(false);
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
+  const [diffView, setDiffView] = useState([]);
+  const [diffGenerated, setDiffGenerated] = useState(false);
   
   const handleJsonInput = () => {
     try {
@@ -54,6 +56,8 @@ const TemplateEditor = () => {
     setActiveDomain(null);
     setIsApproved(false);
     setCurrentChangeIndex(0);
+    setDiffView([]);
+    setDiffGenerated(false);
   };
 
   const handleValueChange = (section, domain, index, field, value) => {
@@ -68,6 +72,7 @@ const TemplateEditor = () => {
     setTemplates(updatedTemplates);
     setIsApproved(false);
     setCurrentChangeIndex(0);
+    setDiffGenerated(false); // Reset diff when changes are made
   };
 
   const addNewTemplate = (section, domain) => {
@@ -107,6 +112,7 @@ const TemplateEditor = () => {
     setTemplates(updatedTemplates);
     setIsApproved(false);
     setCurrentChangeIndex(0);
+    setDiffGenerated(false); // Reset diff when changes are made
   };
 
   const removeTemplate = (section, domain, index) => {
@@ -117,6 +123,7 @@ const TemplateEditor = () => {
     setTemplates(updatedTemplates);
     setIsApproved(false);
     setCurrentChangeIndex(0);
+    setDiffGenerated(false); // Reset diff when changes are made
   };
 
   const renderKeywordTemplatesTable = (domain) => {
@@ -322,12 +329,11 @@ const TemplateEditor = () => {
 
   // Navigation functions for jumping between change sets
   const getChangeSets = () => {
-    const diffData = generateDiffView();
     const changeSets = [];
     let currentSet = [];
     let inChangeSet = false;
     
-    diffData.forEach((diff, index) => {
+    diffView.forEach((diff, index) => {
       if (diff.type !== 'unchanged') {
         // Start or continue a change set
         if (!inChangeSet) {
@@ -449,6 +455,12 @@ const TemplateEditor = () => {
     // Use Myers diff algorithm for proper line matching
     const diffResult = computeProperDiff(originalLines, currentLines);
     return diffResult;
+  };
+
+  const generateDiff = () => {
+    const diff = generateDiffView();
+    setDiffView(diff);
+    setDiffGenerated(true);
   };
 
   // Myers diff algorithm implementation for proper line matching
@@ -864,13 +876,19 @@ const TemplateEditor = () => {
             <Card.Header className="d-flex justify-content-between align-items-center">
               <div>
                 <h3>JSON Comparison</h3>
-                {hasChanges() && (
+                {hasChanges() && !diffGenerated && (
+                  <div className="mt-2">
+                    <Alert variant="info">
+                      Click "Generate Diff" to see the changes between original and modified JSON
+                    </Alert>
+                  </div>
+                )}
+                {hasChanges() && diffGenerated && (
                   <div className="mt-2">
                     {(() => {
-                      const diffData = generateDiffView();
-                      const added = diffData.filter(d => d.type === 'added').length;
-                      const deleted = diffData.filter(d => d.type === 'deleted').length;
-                      const modified = diffData.filter(d => d.type === 'modified').length;
+                      const added = diffView.filter(d => d.type === 'added').length;
+                      const deleted = diffView.filter(d => d.type === 'deleted').length;
+                      const modified = diffView.filter(d => d.type === 'modified').length;
                       return (
                         <small className="text-muted">
                           <span className="badge bg-success me-1">{added}</span> added
@@ -882,8 +900,19 @@ const TemplateEditor = () => {
                   </div>
                 )}
               </div>
-                            <div className="d-flex align-items-center">
-                {hasChanges() && (
+              <div className="d-flex align-items-center">
+                {hasChanges() && !diffGenerated && (
+                  <Button 
+                    variant="primary" 
+                    size="sm"
+                    onClick={generateDiff}
+                    className="me-2"
+                  >
+                    🔍 Generate Diff
+                  </Button>
+                )}
+                
+                {hasChanges() && diffGenerated && (
                   <>
                     <div className="btn-group me-3" role="group">
                       <Button 
@@ -915,7 +944,7 @@ const TemplateEditor = () => {
                   </>
                 )}
                 
-                {hasChanges() && !isApproved && (
+                {hasChanges() && !isApproved && diffGenerated && (
                   <Button 
                     variant="primary" 
                     size="sm"
@@ -926,7 +955,7 @@ const TemplateEditor = () => {
                   </Button>
                 )}
                 
-                {hasChanges() && isApproved && (
+                {hasChanges() && isApproved && diffGenerated && (
                   <>
                     <Button 
                       variant="outline-success" 
@@ -950,21 +979,30 @@ const TemplateEditor = () => {
               </div>
             </Card.Header>
             <Card.Body className="p-0">
-              <div className="diff-container">
-                <div className="diff-header">
-                  <div className="diff-header-section">
-                    <div className="diff-line-number-header">#</div>
-                    <div className="diff-header-title">Original JSON</div>
+              {diffGenerated ? (
+                <div className="diff-container">
+                  <div className="diff-header">
+                    <div className="diff-header-section">
+                      <div className="diff-line-number-header">#</div>
+                      <div className="diff-header-title">Original JSON</div>
+                    </div>
+                    <div className="diff-header-section">
+                      <div className="diff-line-number-header">#</div>
+                      <div className="diff-header-title">Modified JSON</div>
+                    </div>
                   </div>
-                  <div className="diff-header-section">
-                    <div className="diff-line-number-header">#</div>
-                    <div className="diff-header-title">Modified JSON</div>
+                  <div className="diff-content-container">
+                    {diffView.map((diff, index) => renderDiffLine(diff, index))}
                   </div>
                 </div>
-                <div className="diff-content-container">
-                  {generateDiffView().map((diff, index) => renderDiffLine(diff, index))}
+              ) : (
+                <div className="p-4 text-center text-muted">
+                  {hasChanges() ? 
+                    "Click 'Generate Diff' to see the changes" : 
+                    "No changes detected"
+                  }
                 </div>
-              </div>
+              )}
             </Card.Body>
           </Card>
         </Tab>
